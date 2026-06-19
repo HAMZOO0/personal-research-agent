@@ -1,8 +1,8 @@
 # Personal Research Assistant
 
-An AI-powered research assistant that remembers your past sessions and builds on previous research. Ask questions, get structured answers with citations, and pick up where you left off without repeating context.
+An AI-powered research assistant that remembers your past sessions and builds on previous research. Ask questions, get structured answers with citations, and pick up where you left off without repeating context. Now equipped with an autonomous agent loop, web search, and arXiv paper reading tools.
 
-Built with **Groq**, **Mem0**, **LangChain**, and **Streamlit**.
+Built with **Groq**, **Mem0**, **LangChain**, **LangGraph**, and **Streamlit**.
 
 ![Personal Research Assistant — Main Architecture with Mem0 Memory Layer](public/arct.png)
 
@@ -10,7 +10,7 @@ Built with **Groq**, **Mem0**, **LangChain**, and **Streamlit**.
 
 ## Architecture
 
-The diagram above shows the full system flow. Below is a simplified interactive view:
+The diagram above shows the full system flow. Below is a simplified interactive view of the agentic workflow:
 
 ```mermaid
 flowchart TB
@@ -18,11 +18,12 @@ flowchart TB
         ST[Streamlit Chat UI]
     end
 
-    subgraph Orchestration["Orchestration Layer — LangChain"]
+    subgraph Orchestration["Orchestration Layer — LangGraph & LangChain"]
         MR[Memory Retrieval]
         CB[Context Builder]
-        LC[LLM Chain]
-        MU[Memory Updater]
+        AE[ReAct Agent Executor]
+        WS[web_search tool]
+        FA[fetch_arxiv_paper tool]
     end
 
     subgraph Memory["Memory Layer — Mem0"]
@@ -37,19 +38,20 @@ flowchart TB
 
     subgraph LLM["LLM Layer — Groq"]
         SP[System Prompt]
-        QW[qwen3-32b]
+        LLM_M[llama-3.3-70b-versatile]
     end
 
     ST -->|User query| MR
     MR --> MS
     MS --> VS
     VS -->|Relevant memories| CB
-    CB -->|Query + memory context| LC
-    LC --> SP
-    SP --> QW
-    QW -->|Structured response| ST
-    QW --> MU
-    MU --> MA
+    CB -->|Query + memory context| AE
+    AE --> SP
+    SP --> LLM_M
+    AE <-->|Invoke| WS
+    AE <-->|Invoke| FA
+    LLM_M -->|Structured response| ST
+    LLM_M --> MA
     MA --> FE
     FE --> FP
     FP --> EM
@@ -62,10 +64,10 @@ flowchart TB
 
 1. User submits a question in the Streamlit UI.
 2. LangChain searches Mem0 for relevant past memories for that user.
-3. Retrieved memories are injected into the system prompt as context.
-4. The query and context are sent to Groq (qwen3-32b).
-5. The model returns a structured answer with sources and follow-up questions.
-6. The conversation is stored in Mem0 for future sessions.
+3. Retrieved memories are injected into the agent's system prompt context.
+4. The query, system prompt, and tools are handled by a LangGraph ReAct Agent using `llama-3.3-70b-versatile`.
+5. The agent can search the web and fetch full arXiv paper contents to answer the query accurately.
+6. The final response is shown to the user, and the conversation is stored in Mem0 for future sessions.
 
 ---
 
@@ -73,6 +75,9 @@ flowchart TB
 
 - **Persistent memory** — Mem0 stores meaningful facts from past research per user ID.
 - **Context-aware answers** — New questions connect to what you have already explored.
+- **Agentic Capabilities** — Uses a LangGraph ReAct agent to autonomously search the web and retrieve research papers.
+- **Web Search Tool** — Queries the web using `ddgs` to find the most recent and relevant information.
+- **arXiv Paper Fetcher** — Downloads and parses the full text of arXiv papers using `PyMuPDF` if referenced or requested, preventing summarization based on search snippets alone.
 - **Structured output** — Responses include sections, source links, and follow-up questions.
 - **Memory browser** — View all stored memories from the sidebar.
 - **Per-user isolation** — Each user ID has its own memory space.
@@ -84,8 +89,10 @@ flowchart TB
 | Layer | Technology | Role |
 |-------|------------|------|
 | Frontend | [Streamlit](https://streamlit.io) | Chat UI and memory viewer |
-| Orchestration | [LangChain](https://langchain.com) | Prompt assembly and LLM invocation |
-| LLM | [Groq](https://console.groq.com) — qwen3-32b | Research reasoning and response generation |
+| Orchestration | [LangChain](https://langchain.com) & [LangGraph](https://langchain-ai.github.io/langgraph/) | Agent assembly, prompt construction, and tool execution |
+| LLM | [Groq](https://console.groq.com) — llama-3.3-70b-versatile | Research reasoning and tool-calling agent |
+| Web Search | [ddgs](https://pypi.org/project/ddgs/) | Web search tool backend |
+| PDF Processing | [PyMuPDF](https://pymupdf.readthedocs.io/en/latest/) | Extracting text from downloaded arXiv paper PDFs |
 | Memory | [Mem0](https://mem0.ai) | Long-term semantic memory |
 | Vector store | Qdrant (in-memory) | Embedding storage and retrieval |
 | Embeddings | sentence-transformers/all-MiniLM-L6-v2 | Text vectorization |
@@ -96,12 +103,14 @@ flowchart TB
 
 ```
 Personal research assistant/
-├── app.py          # Streamlit frontend
-├── memory.py       # Mem0 + LangChain chat logic
-├── test.py         # Mem0 initialization test script
+├── app.py                  # Streamlit frontend
+├── memory.py               # Mem0 + LangChain + LangGraph agent logic
+├── test.py                 # Mem0 initialization test script
+├── test_agent_arxiv.py     # Test script for testing arXiv paper fetching
+├── test_future_imports.py  # Test script for imports verification
 ├── public/
-│   └── arct.png    # Architecture diagram
-├── .env            # API keys (not committed)
+│   └── arct.png            # Architecture diagram
+├── .env                    # API keys (not committed)
 └── readme.md
 ```
 
@@ -136,7 +145,7 @@ Personal research assistant/
 3. **Install dependencies**
 
    ```bash
-   pip install streamlit python-dotenv langchain langchain-groq mem0ai qdrant-client sentence-transformers duckduckgo-search langgraph
+   pip install streamlit python-dotenv langchain langchain-groq mem0ai qdrant-client sentence-transformers ddgs pymupdf requests langgraph
    ```
 
 4. **Configure environment variables**
@@ -147,13 +156,19 @@ Personal research assistant/
    GROQ_API_KEY=your_groq_api_key_here
    ```
 
-5. **Verify Mem0 setup (optional)**
+5. **Verify Setup and Agents (optional)**
 
+   To verify Mem0 database initialization:
    ```bash
    python test.py
    ```
-
    You should see `SUCCESS: Memory initialized`.
+
+   To test agent tool execution and arXiv fetching:
+   ```bash
+   python test_agent_arxiv.py
+   ```
+   This will run a sample query that forces the agent to fetch and summarize an arXiv paper.
 
 ---
 
@@ -193,7 +208,7 @@ Key settings in `memory.py`:
 
 | Setting | Value | Description |
 |---------|-------|-------------|
-| LLM model | `groq:qwen/qwen3-32b` | Main research model |
+| LLM model | `groq:llama-3.3-70b-versatile` | Main agent research & reasoning model |
 | Mem0 LLM | `llama-3.3-70b-versatile` | Fact extraction |
 | Collection | `mem0_research_assistant` | Qdrant collection name |
 | Embedder | `all-MiniLM-L6-v2` | 384-dim embeddings |
