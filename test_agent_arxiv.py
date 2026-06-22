@@ -8,7 +8,8 @@ def test_agent():
     user_id = "test_user"
     
     try:
-        reply = chat(user_id=user_id, user_message=user_message)
+        res = chat(user_id=user_id, user_message=user_message)
+        reply = res["reply"] if isinstance(res, dict) else res
         print("\n=== AGENT RESPONSE ===")
         print(reply)
         print("======================\n")
