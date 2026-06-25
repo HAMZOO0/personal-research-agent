@@ -88,11 +88,14 @@ except Exception as e:
     print(f"Model init error: {e}")
 
 # --- Init memory ---
+MEMORY_INIT_ERROR = None
 try:
     MEMORY = Memory.from_config(MEM0_CONFIG)
     print("SUCCESS: Memory initialized")
 except Exception as e:
+    import traceback
     MEMORY = None
+    MEMORY_INIT_ERROR = traceback.format_exc()
     print(f"Memory init error: {e}")
 
 
