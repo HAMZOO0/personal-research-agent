@@ -1,0 +1,13 @@
+streamlit
+python-dotenv
+langchain
+langchain-groq
+mem0ai
+qdrant-client
+sentence-transformers
+ddgs
+pymupdf
+requests
+langgraph
+mcp
+youtube-transcript-api

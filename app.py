@@ -1,6 +1,6 @@
 import streamlit as st
 import json
-from memory import chat, getAllMemory
+from src import chat, getAllMemory
 
 st.set_page_config(page_title="Research Assistant", layout="wide")
 

@@ -1,139 +1,138 @@
-# Personal Research Assistant
+# Personal Research Assistant (Modular Agent Framework)
 
 An AI-powered research assistant that remembers your past sessions and builds on previous research. Ask questions, get structured answers with citations, and pick up where you left off without repeating context. Now equipped with an autonomous agent loop, web search, and arXiv paper reading tools.
 
-Built with **Groq**, **Mem0**, **LangChain**, **LangGraph**, and **Streamlit**.
+Built with **Groq**, **Mem0**, **LangChain**, **LangGraph**, **FastMCP**, and **Streamlit**.
 
 ![Personal Research Assistant — Main Architecture with Mem0 Memory Layer](public/arct.png)
 
 ---
 
-## Architecture
+## Architecture & System Design
 
-The diagram above shows the full system flow. Below is a simplified interactive view of the agentic workflow:
+Below is the updated system design showing the modular separation of concerns. The main application launches a Streamlit dashboard, which imports the orchestrating assistant module (`src`). The orchestrator interacts with the Mem0 long-term memory layer and coordinates the LangGraph ReAct agent loop, which dynamically spawns and communicates with the `FastMCP` tools server over standard I/O channels.
 
 ```mermaid
 flowchart TB
-    subgraph UI["User Interface"]
-        ST[Streamlit Chat UI]
+    subgraph UI ["User Interface (Streamlit)"]
+        app["app.py (Streamlit Dashboard)"]
     end
 
-    subgraph Orchestration["Orchestration Layer — LangGraph & LangChain"]
-        MR[Memory Retrieval]
-        CB[Context Builder]
-        AE[ReAct Agent Executor]
-        WS[web_search tool]
-        FA[fetch_arxiv_paper tool]
+    subgraph Core ["Modular Codebase (src package)"]
+        init["src/__init__.py (Interface)"]
+        config["src/config.py (Config & Prompts)"]
+        agent["src/agent.py (Agent Executor & Orchestrator)"]
+        memory["src/memory.py (Mem0 Memory Wrapper)"]
+        mcp_server["src/mcp_server.py (FastMCP Server)"]
     end
 
-    subgraph Memory["Memory Layer — Mem0"]
-        MS[memory.search]
-        MA[memory.add]
-        MG[memory.get_all]
-        FE[Fact Extractor]
-        FP[Fact Processor]
-        EM[Embedder]
-        VS[(Qdrant Vector Store)]
+    subgraph Tools ["Custom Tools Module (src/tools)"]
+        search["tools/search.py (DuckDuckGo Web Search)"]
+        arxiv["tools/arxiv.py (arXiv PDF Parser)"]
+        youtube["tools/youtube.py (YT Search & Transcripts)"]
+        github["tools/github.py (GitHub Repo Search)"]
     end
 
-    subgraph LLM["LLM Layer — Groq"]
-        SP[System Prompt]
-        LLM_M[llama-3.3-70b-versatile]
+    subgraph External ["External Services & Models"]
+        Groq["Groq (llama-3.3-70b-versatile)"]
+        Qdrant["Qdrant Vector Database (:memory:)"]
+        ExternalAPIs["External APIs (Arxiv, YouTube, GitHub)"]
     end
 
-    ST -->|User query| MR
-    MR --> MS
-    MS --> VS
-    VS -->|Relevant memories| CB
-    CB -->|Query + memory context| AE
-    AE --> SP
-    SP --> LLM_M
-    AE <-->|Invoke| WS
-    AE <-->|Invoke| FA
-    LLM_M -->|Structured response| ST
-    LLM_M --> MA
-    MA --> FE
-    FE --> FP
-    FP --> EM
-    EM --> VS
-    ST -->|View memories| MG
-    MG --> VS
+    %% UI to Core Interactions
+    app -->|Import & Call chat() / getAllMemory()| init
+    init --> agent
+    init --> memory
+
+    %% Core Package Relationships
+    agent -->|Retrieve Relevant Context| memory
+    agent -->|Load Configuration| config
+    memory -->|Load Vector Config| config
+    
+    %% Agent to MCP Tool Execution Flow
+    agent -->|Execute Subprocess: python -m src.mcp_server| mcp_server
+    mcp_server -->|Routes Tool Requests| search
+    mcp_server -->|Routes Tool Requests| arxiv
+    mcp_server -->|Routes Tool Requests| youtube
+    mcp_server -->|Routes Tool Requests| github
+
+    %% Core to External/Service interactions
+    agent -->|Chat Completion & Tool Calling| Groq
+    memory -->|Store/Retrieve Facts| Qdrant
+    search -->|Scraping / DDGS| ExternalAPIs
+    arxiv -->|Fetch PDF| ExternalAPIs
+    youtube -->|Scrap Transcripts| ExternalAPIs
+    github -->|Fetch Repo Data| ExternalAPIs
 ```
 
-### Request flow
+### Request Flow
+1. **User Query:** The user enters a prompt in the Streamlit UI (`app.py`).
+2. **Context Retrieval:** The orchestrator retrieves semantic memory facts for the user ID using `src.memory.get_memories`.
+3. **Prompt Customization:** Memory context is formatted and injected into `SYSTEM_PROMPT_TEMPLATE` from `src.config`.
+4. **Agent Invocation:** A LangGraph ReAct agent is initialized in `src.agent.chat`.
+5. **Tool Loading & MCP Resolution:** The agent connects to `src.mcp_server` as an external MCP server, loading tools (`web_search`, `fetch_arxiv_paper`, `youtube_search`, `youtube_transcript`, `github_search`).
+6. **Execution Loop:** The LLM reasoning determines if a tool needs to be executed:
+   - Tool calls are sent to `mcp_server`, which delegates to the respective submodule in `src/tools/`.
+   - Results are fed back to the LLM.
+7. **Fact Summarization:** The final reply is rendered on Streamlit, and new facts are asynchronously extracted and saved into the vector store by Mem0 via `src.memory.add_memory`.
 
-1. User submits a question in the Streamlit UI.
-2. LangChain searches Mem0 for relevant past memories for that user.
-3. Retrieved memories are injected into the agent's system prompt context.
-4. The query, system prompt, and tools are handled by a LangGraph ReAct Agent using `llama-3.3-70b-versatile`.
-5. The agent can search the web and fetch full arXiv paper contents to answer the query accurately.
-6. The final response is shown to the user, and the conversation is stored in Mem0 for future sessions.
+---
+
+## Directory Structure
+
+The project has been refactored into a proper modular Python structure, clean of root file pollution, and organized as follows:
+
+```
+Personal research assistant/
+├── app.py                      # Main Streamlit dashboard (Entrypoint)
+├── requirements.txt            # System dependencies
+├── .env                        # Local secret configurations (Ignored)
+├── .gitignore                  # Git ignore files
+├── readme.md                   # System design and developer documentation
+├── public/                     # Images and structural diagrams
+│   └── arct.png                # Structural workflow diagram
+├── src/                        # Core application module
+│   ├── __init__.py             # Main module entry point (exposes chat, getAllMemory)
+│   ├── config.py               # Memory parameters, LLM options, prompts
+│   ├── agent.py                # Agent instantiation, chat logic, tool integration
+│   ├── memory.py               # Mem0 memory lifecycle management
+│   ├── mcp_server.py           # FastMCP server wrapping agent tools
+│   └── tools/                  # Subpackage containing modular tool implementations
+│       ├── __init__.py         # Exposes all tool functions
+│       ├── arxiv.py            # arXiv fetching and parsing logic
+│       ├── github.py           # GitHub repository search logic
+│       ├── search.py           # DuckDuckGo search logic
+│       └── youtube.py          # YouTube video search and transcripts fetching
+└── tests/                      # Unified testing package
+    ├── __init__.py             # Test package initialization
+    ├── test_agent.py           # Validates agent tool-calling logic using sample query
+    ├── test_imports.py         # Verifies compatibility and library imports
+    └── test_memory.py          # Tests Mem0 initialization and embedding extraction
+```
 
 ---
 
 ## Features
 
-- **Persistent memory** — Mem0 stores meaningful facts from past research per user ID.
-- **Context-aware answers** — New questions connect to what you have already explored.
-- **Agentic Capabilities** — Uses a LangGraph ReAct agent to autonomously search the web and retrieve research papers.
-- **Web Search Tool** — Queries the web using `ddgs` to find the most recent and relevant information.
-- **arXiv Paper Fetcher** — Downloads and parses the full text of arXiv papers using `PyMuPDF` if referenced or requested, preventing summarization based on search snippets alone.
-- **Structured output** — Responses include sections, source links, and follow-up questions.
-- **Memory browser** — View all stored memories from the sidebar.
-- **Per-user isolation** — Each user ID has its own memory space.
+- **Modular Refactoring** — Clear package organization under `src/` keeping the root neat.
+- **MCP Tool Execution** — Custom tools are run through a standardized `FastMCP` architecture.
+- **Persistent Semantic Memory** — Mem0 remembers facts, constraints, and research steps per User ID.
+- **Isolated Per-User Profiles** — Stored data is partitioned by User ID for multi-tenant isolation.
+- **YouTube Insights** — Integrates YouTube search results and video transcript analysis tool.
+- **GitHub Repository Analytics** — Searches codebases, repositories, and stars.
+- **arXiv PDF Reader** — Fetches full PDF content to extract exact details rather than relying on brief search descriptions.
 
 ---
 
-## Tech Stack
+## Setup & Installation
 
-| Layer | Technology | Role |
-|-------|------------|------|
-| Frontend | [Streamlit](https://streamlit.io) | Chat UI and memory viewer |
-| Orchestration | [LangChain](https://langchain.com) & [LangGraph](https://langchain-ai.github.io/langgraph/) | Agent assembly, prompt construction, and tool execution |
-| LLM | [Groq](https://console.groq.com) — llama-3.3-70b-versatile | Research reasoning and tool-calling agent |
-| Web Search | [ddgs](https://pypi.org/project/ddgs/) | Web search tool backend |
-| PDF Processing | [PyMuPDF](https://pymupdf.readthedocs.io/en/latest/) | Extracting text from downloaded arXiv paper PDFs |
-| Memory | [Mem0](https://mem0.ai) | Long-term semantic memory |
-| Vector store | Qdrant (in-memory) | Embedding storage and retrieval |
-| Embeddings | sentence-transformers/all-MiniLM-L6-v2 | Text vectorization |
-
----
-
-## Project Structure
-
-```
-Personal research assistant/
-├── app.py                  # Streamlit frontend
-├── memory.py               # Mem0 + LangChain + LangGraph agent logic
-├── test.py                 # Mem0 initialization test script
-├── test_agent_arxiv.py     # Test script for testing arXiv paper fetching
-├── test_future_imports.py  # Test script for imports verification
-├── public/
-│   └── arct.png            # Architecture diagram
-├── .env                    # API keys (not committed)
-└── readme.md
-```
-
----
-
-## Prerequisites
-
-- Python 3.10+
-- A [Groq API key](https://console.groq.com)
-
----
-
-## Setup
-
-1. **Clone the repository**
-
+1. **Clone the repository:**
    ```bash
    git clone <repository-url>
    cd "Personal research assistant"
    ```
 
-2. **Create and activate a virtual environment**
-
+2. **Create and activate a virtual environment:**
    ```bash
    python -m venv venv
    # Windows
@@ -142,80 +141,54 @@ Personal research assistant/
    source venv/bin/activate
    ```
 
-3. **Install dependencies**
-
+3. **Install dependencies:**
    ```bash
-   pip install streamlit python-dotenv langchain langchain-groq mem0ai qdrant-client sentence-transformers ddgs pymupdf requests langgraph
+   pip install -r requirements.txt
    ```
 
-4. **Configure environment variables**
-
+4. **Configure environment variables:**
    Create a `.env` file in the project root:
-
    ```env
    GROQ_API_KEY=your_groq_api_key_here
    ```
 
-5. **Verify Setup and Agents (optional)**
+---
 
-   To verify Mem0 database initialization:
-   ```bash
-   python test.py
-   ```
-   You should see `SUCCESS: Memory initialized`.
+## Verification & Testing
 
-   To test agent tool execution and arXiv fetching:
-   ```bash
-   python test_agent_arxiv.py
-   ```
-   This will run a sample query that forces the agent to fetch and summarize an arXiv paper.
+Verify that the system compiles and works correctly by running the tests module:
+
+- **Verify Memory System Initialization:**
+  ```bash
+  python -m tests.test_memory
+  ```
+  Expected output: `SUCCESS: Memory initialized successfully!`
+
+- **Verify Module Imports:**
+  ```bash
+  python -m tests.test_imports
+  ```
+  Expected output: Success notifications for LangChain and LangGraph imports.
+
+- **Verify Agent Tool-Calling and arXiv Parsing:**
+  ```bash
+  python -m tests.test_agent
+  ```
+  Expected output: The agent will download, read, and summarize the arXiv paper details successfully.
 
 ---
 
-## Usage
+## Running the Application
 
-Start the Streamlit app:
+Launch the Streamlit client server:
 
 ```bash
 streamlit run app.py
 ```
 
-Open the URL shown in the terminal (typically `http://localhost:8501`).
-
-1. Set your **User ID** in the sidebar (default: `user_01`).
-2. Type a research question in the chat input.
-3. Use **View all memories** to inspect stored facts.
-4. Use **Clear chat** to reset the current session UI (memory is preserved).
-
----
-
-## How Memory Works
-
-When you send a message, Mem0:
-
-1. **Searches** the vector store for memories related to your query.
-2. **Injects** relevant facts into the system prompt.
-3. **Generates** a response using Groq with that context.
-4. **Extracts** new facts from the exchange and stores them for later.
-
-Mem0 uses an in-memory Qdrant instance (`:memory:`), so memories reset when the process stops. For persistent storage across restarts, configure a local or remote Qdrant path in `memory.py`.
-
----
-
-## Configuration
-
-Key settings in `memory.py`:
-
-| Setting | Value | Description |
-|---------|-------|-------------|
-| LLM model | `groq:llama-3.3-70b-versatile` | Main agent research & reasoning model |
-| Mem0 LLM | `llama-3.3-70b-versatile` | Fact extraction |
-| Collection | `mem0_research_assistant` | Qdrant collection name |
-| Embedder | `all-MiniLM-L6-v2` | 384-dim embeddings |
-| Memory search limit | 5 | Max memories retrieved per query |
+Open the local URL (typically `http://localhost:8501`) in your browser to interact with the assistant.
 
 ---
 
 ## License
-
-This project is provided as-is for personal and educational use.
+This project is provided as-is for educational and personal research use.
