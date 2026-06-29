@@ -224,3 +224,9 @@ __marimo__/
 
 # Qdrant persistent vector store (memory data)
 qdrant_store/
+
+# SQLite memory database
+memory.db
+
+# JSON memory files (legacy)
+user_memories/

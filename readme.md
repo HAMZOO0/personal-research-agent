@@ -8,9 +8,8 @@
 [![Groq](https://img.shields.io/badge/LLM-Groq_5--Model_Cascade-F55036?style=flat-square&logo=groq&logoColor=white)](https://console.groq.com)
 [![LangChain](https://img.shields.io/badge/Framework-LangChain-1C3C3C?style=flat-square&logo=langchain&logoColor=white)](https://langchain.com)
 [![Streamlit](https://img.shields.io/badge/UI-Streamlit-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)](https://streamlit.io)
-[![Mem0](https://img.shields.io/badge/Memory-Mem0-6C63FF?style=flat-square)](https://mem0.ai)
+[![SQLite](https://img.shields.io/badge/Memory-SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://sqlite.org)
 [![FastMCP](https://img.shields.io/badge/Tools-FastMCP-00C7B7?style=flat-square)](https://github.com/jlowin/fastmcp)
-[![Qdrant](https://img.shields.io/badge/VectorDB-Qdrant-DC244C?style=flat-square&logo=qdrant&logoColor=white)](https://qdrant.tech)
 
 *ScholarMind — ask questions, discover papers, search code, watch videos — all in one session, with memory that persists across conversations.*
 
@@ -49,7 +48,7 @@ The system is built for researchers, developers, and students who need to synthe
 | Capability | Description |
 |---|---|
 | Autonomous reasoning | LangChain ReAct loop decides which tools to call and in what order |
-| Persistent memory | Mem0 stores and retrieves facts per user across sessions using vector search |
+| Persistent memory | SQLite stores extracted facts per user across sessions; recalled on every query |
 | Multi-source research | 7 tools: web, arXiv (search + PDF), PubMed, YouTube (search + transcript), GitHub |
 | Slash command routing | `/papers`, `/pubmed`, `/git`, `/yt`, `/sub`, `/search`, `/paper` map directly to tools |
 | 5-model cascade | Auto-advances through 5 Groq models on rate-limit — session never drops |
@@ -162,8 +161,8 @@ The system prompt intelligently routes paper searches to the correct database:
 
 This prevents the classic mistake of searching arXiv for medical topics and getting physics papers with matching words (e.g. searching "hair loss" and getting *black hole hair* papers).
 
-### Semantic Long-Term Memory
-Mem0 extracts facts from each conversation turn and stores them as dense vectors in Qdrant. On the next session, the top-5 most relevant memories are retrieved and injected into the system prompt — the assistant knows what you've already researched.
+### Lightweight Persistent Memory
+A purpose-built SQLite memory engine stores extracted facts per user in a single `memory.db` file — no external services, no rate-limit conflicts. After each message, a dedicated Groq model (separate from the chat cascade) reads only the user's message with a ~150-token extraction prompt and writes structured facts (`"Name is Hamza"`, `"From Pakistan"`, `"Software engineer"`) into the database. On every new query, the top-5 most relevant facts are retrieved by keyword scoring and injected into the system prompt. Facts persist permanently across restarts.
 
 ### 5-Model Cascade — Zero-Drop Rate-Limit Recovery
 All five Groq models are initialized at startup. When any model returns a `429`, the agent increments the cascade index and rebinds the next model **mid-loop** — preserving full message history, tool results, and conversation state across the switch.
@@ -222,8 +221,8 @@ flowchart TB
         direction TB
         Init["src/__init__.py\nPublic API: chat() · getAllMemory()"]
         Agent["src/agent.py\nReAct Loop · Tool Dispatch · Cascade Logic"]
-        Config["src/config.py\nMODEL_CASCADE · MEM0_CONFIG · System Prompt"]
-        Memory["src/memory.py\nMem0 Lifecycle: add · get · list"]
+        Config["src/config.py\nMODEL_CASCADE · System Prompt"]
+        Memory["src/memory.py\nSQLite: add · get · list"]
     end
 
     subgraph Tools ["Tool Layer  (src/tools/ + src/mcp_server.py)"]
@@ -238,8 +237,7 @@ flowchart TB
 
     subgraph External ["External Services"]
         Groq["Groq API\ngpt-oss-120b → qwen3.6-27b\n→ llama-3.3-70b → qwen3-32b → gpt-oss-20b"]
-        Qdrant["Qdrant Vector Store"]
-        HFEmbed["HuggingFace\nall-MiniLM-L6-v2 Embedder"]
+        SQLiteDB["SQLite Database\nmemory.db (auto-created)"]
         DDGS["DuckDuckGo DDGS"]
         ArxivAPI["arXiv.org\nSearch + PDF"]
         PubMedAPI["NCBI EUtils\nPubMed"]
@@ -258,8 +256,6 @@ flowchart TB
 
     Agent -->|"get_memories()"| Memory
     Agent -->|"load prompts & cascade"| Config
-    Memory -->|"vector config"| Config
-
     Agent -->|"bind_tools() · ainvoke()"| Groq
     Agent --> WebSearch
     Agent --> ArxivSearch
@@ -267,8 +263,7 @@ flowchart TB
     Agent --> YouTube
     Agent --> GitHub
 
-    Memory -->|"store / retrieve embeddings"| Qdrant
-    Memory -->|"embed facts"| HFEmbed
+    Memory -->|"INSERT / SELECT facts"| SQLiteDB
 
     WebSearch -->|"DDGS.text()"| DDGS
     ArxivSearch -->|"search + PDF fetch"| ArxivAPI
@@ -303,7 +298,7 @@ sequenceDiagram
     participant Memory as Memory (memory.py)
     participant Tools as Tool Layer (src/tools/)
     participant Groq as Groq LLM cascade
-    participant VDB as Qdrant Vector Store
+    participant DB as SQLite (memory.db)
 
     User->>UI: Submit query (text or /command)
     UI->>UI: Parse slash command → forced_tool + enabled_tools
@@ -311,8 +306,8 @@ sequenceDiagram
     Init->>Agent: Delegate to agent.chat()
 
     Agent->>Memory: get_memories(query, user_id)
-    Memory->>VDB: semantic_search(embedding(query))
-    VDB-->>Memory: Top-k relevant facts
+    Memory->>DB: SELECT facts WHERE user_id=? ORDER BY relevance
+    DB-->>Memory: Top-5 relevant facts (keyword ranked)
     Memory-->>Agent: Formatted memory context
 
     Agent->>Agent: Build SystemMessage with SYSTEM_PROMPT_TEMPLATE + memory
@@ -340,7 +335,7 @@ sequenceDiagram
     end
 
     Agent->>Memory: add_memory(user_id, message, reply)
-    Memory->>VDB: upsert(embedding(facts))
+    Memory->>DB: INSERT extracted facts (SQLite)
 
     Agent-->>Init: reply + github_results + youtube_results + model_used
     Init-->>UI: Structured response dict
@@ -441,46 +436,43 @@ flowchart LR
 ```mermaid
 flowchart LR
     subgraph Input ["Input Layer"]
-        Query["User Query"]
-        Reply["Agent Reply"]
+        UserMsg["User Message\n(only — not the reply)"]
         UID["User ID"]
     end
 
-    subgraph Mem0 ["Mem0 Memory Engine  (src/memory.py)"]
+    subgraph Engine ["SQLite Memory Engine  (src/memory.py)"]
         direction TB
-        AddMem["add_memory()\nExtract facts from conversation"]
-        GetMem["get_memories()\nSemantic retrieval by query"]
-        ListMem["getAllMemory()\nFull history dump"]
-        LLMExtract["Groq (active cascade model)\nFact extraction and summarization"]
+        AddMem["add_memory()\nExtract + persist facts"]
+        GetMem["get_memories()\nKeyword-ranked retrieval"]
+        ListMem["getAllMemory()\nFull history for sidebar"]
+        LLMExtract["Dedicated Extraction LLM\nGroq llama-3.3-70b-versatile\n~150-token prompt"]
     end
 
-    subgraph VectorPipeline ["Vector Pipeline"]
+    subgraph Storage ["Persistent Storage"]
         direction TB
-        Embedder["HuggingFace Embedder\nall-MiniLM-L6-v2\n384 dims"]
-        QdrantMem["Qdrant Vector Store\ncollection: mem0_research_assistant"]
-        TopK["Top-K Semantic Search\nk=5 relevant facts"]
+        SQLiteDB["SQLite — memory.db\nTable: memories\n(id, user_id, memory, created_at)"]
+        KeyRank["Keyword Relevance Ranking\nTop-5 facts returned"]
     end
 
     subgraph Output ["Context Output"]
         MemCtx["Formatted Memory Context\nInjected into System Prompt"]
     end
 
-    Query -->|"new query"| GetMem
-    Reply -->|"conversation turn"| AddMem
-    UID -->|"per-user partition"| AddMem
-    UID -->|"per-user filter"| GetMem
+    UserMsg -->|"first 400 chars only"| AddMem
+    UID -->|"per-user rows"| AddMem
+    UID -->|"WHERE user_id=?"| GetMem
 
-    AddMem -->|"extract facts"| LLMExtract
-    LLMExtract -->|"embed"| Embedder
-    Embedder -->|"upsert vectors"| QdrantMem
+    AddMem -->|"extract 0-3 facts"| LLMExtract
+    LLMExtract -->|"INSERT rows"| SQLiteDB
 
-    GetMem -->|"embed query"| Embedder
-    Embedder -->|"ANN search"| QdrantMem
-    QdrantMem -->|"k nearest facts"| TopK
-    TopK --> MemCtx
+    GetMem -->|"SELECT + rank"| SQLiteDB
+    SQLiteDB -->|"sorted facts"| KeyRank
+    KeyRank --> MemCtx
 
-    ListMem -->|"scroll all"| QdrantMem
+    ListMem -->|"SELECT all"| SQLiteDB
 ```
+
+> Mem0 + Qdrant were removed because Mem0's internal fact-extraction prompt is ~9,500 tokens — exceeding every Groq free-tier model's per-minute token budget. The custom SQLite engine uses a ~150-token extraction prompt per message, making it reliable on any rate limit tier.
 
 ---
 
@@ -572,7 +564,7 @@ flowchart TD
 The user types a query or uses a slash command like `/pubmed minoxidil hair loss`. `app.py` detects the prefix, sets `forced_tool = "pubmed_search"`, and calls `chat(user_id, message, enabled_tools)`.
 
 **Step 2 — Memory retrieval**
-`agent.chat()` calls `get_memories(query, user_id)` which embeds the query using `all-MiniLM-L6-v2` and runs ANN search against Qdrant. The top-5 semantically relevant facts from past sessions are returned and formatted into the system prompt.
+`agent.chat()` calls `get_memories(query, user_id)` which fetches all stored facts for the user from SQLite, ranks them by keyword overlap with the current query, and returns the top-5 as a formatted context block injected into the system prompt.
 
 **Step 3 — Model selection**
 The agent picks the first available model from `MODEL_CASCADE` (starting at index 0: `openai/gpt-oss-120b`), binds the active tool set with `model.bind_tools(tools)`, and invokes the LLM.
@@ -584,7 +576,7 @@ The LLM returns an `AIMessage`. If it contains `tool_calls`, the agent executes 
 The system prompt instructs the model: medical queries → `pubmed_search`, CS/AI queries → `arxiv_search`. For arXiv results, the agent also calls `fetch_arxiv_paper` to read the full PDF of the top 2–3 papers.
 
 **Step 6 — Memory persistence**
-After the final reply, `add_memory(user_id, message, reply)` extracts key facts from the conversation and upserts them as embeddings into Qdrant under the user's partition.
+After the final reply, `add_memory(user_id, message, reply)` sends only the user's message (~150 tokens total) to a dedicated Groq model (`llama-3.3-70b-versatile`) with a minimal extraction prompt. Extracted facts like `"Name is Hamza"` or `"Software engineer"` are inserted as rows into `memory.db` scoped to the user's ID.
 
 **Step 7 — Response rendering**
 The structured dict `{reply, github_results, youtube_results, model_used}` is returned to `app.py`. The reply renders as markdown, GitHub repos as dark-theme cards with star counts, YouTube videos as compact thumbnail cards. The active model badge updates in the sidebar and below the reply.
@@ -601,9 +593,8 @@ The structured dict `{reply, github_results, youtube_results, model_used}` is re
 | LLM #4 | Groq `qwen/qwen3-32b` | Solid coding + RAG fallback |
 | LLM #5 (Last resort) | Groq `openai/gpt-oss-20b` | Fastest, lightest |
 | Agent Framework | LangChain (`init_chat_model`, `bind_tools`) | ReAct loop and tool dispatch |
-| Memory Engine | Mem0 | Fact extraction, storage, and retrieval |
-| Vector Database | Qdrant (`./qdrant_store`) | Persistent dense vector storage |
-| Embedder | HuggingFace `all-MiniLM-L6-v2` | 384-dim sentence embeddings |
+| Memory Store | SQLite (`memory.db`) | Persistent per-user fact storage (built-in Python) |
+| Memory Extraction | Groq `llama-3.3-70b-versatile` | ~150-token fact extraction from user messages |
 | MCP Layer | FastMCP | Tool protocol server (stdio transport) |
 | UI | Streamlit | Chat interface and rich card rendering |
 | Web Search | DuckDuckGo DDGS | Scrape-free web results (6 per query) |
@@ -632,13 +623,13 @@ Personal research assistant/
 │   ├── youtub.jpeg                 # YouTube compact cards screenshot
 │   └── Screenshot_*.jpeg           # Dashboard and output screenshots
 │
-├── qdrant_store/                   # Persistent vector DB (auto-created, git-ignored)
+├── memory.db                       # SQLite memory database (auto-created, git-ignored)
 │
 ├── src/                            # Core application package
 │   ├── __init__.py                 # Public API: chat(), getAllMemory()
-│   ├── config.py                   # MODEL_CASCADE, MEM0_CONFIG, SYSTEM_PROMPT_TEMPLATE
+│   ├── config.py                   # MODEL_CASCADE, SYSTEM_PROMPT_TEMPLATE
 │   ├── agent.py                    # ReAct loop, tool binding, cascade, slash routing
-│   ├── memory.py                   # Mem0 wrapper: add_memory(), get_memories(), getAllMemory()
+│   ├── memory.py                   # SQLite memory: add_memory(), get_memories(), getAllMemory()
 │   ├── mcp_server.py               # FastMCP server exposing all 7 tools over stdio
 │   │
 │   └── tools/                      # Modular tool implementations
@@ -653,7 +644,7 @@ Personal research assistant/
     ├── __init__.py
     ├── test_agent.py               # End-to-end agent + tool-call test
     ├── test_imports.py             # Dependency import verification
-    └── test_memory.py              # Mem0 initialization + embedding test
+    └── test_memory.py              # SQLite memory initialization + write/read test
 ```
 
 ---
@@ -717,31 +708,20 @@ MODEL_CASCADE = [
 ]
 ```
 
-### Memory Config (`src/config.py`)
+### Memory System (`src/memory.py`)
 
-```python
-MEM0_CONFIG = {
-    "llm": {
-        "provider": "groq",
-        "config": {"model": "openai/gpt-oss-20b"},
-    },
-    "vector_store": {
-        "provider": "qdrant",
-        "config": {
-            "collection_name": "mem0_research_assistant",
-            "embedding_model_dims": 384,
-            "path": "./qdrant_store",    # persists to disk across restarts
-        },
-    },
-    "embedder": {
-        "provider": "huggingface",
-        "config": {
-            "model": "sentence-transformers/all-MiniLM-L6-v2",
-            "embedding_dims": 384,
-        },
-    },
-}
-```
+ScholarMind uses a custom SQLite memory engine — no external services required.
+
+| Parameter | Value |
+|---|---|
+| Database file | `./memory.db` (auto-created on first run) |
+| Extraction models | `llama-3.3-70b-versatile` → `qwen/qwen3-32b` → `qwen/qwen3.6-27b` (cascade) |
+| Prompt size | ~150 tokens per save (user message only — never the full reply) |
+| Retrieval | Keyword-ranked, top-5 facts injected into system prompt |
+| Storage | Per-user rows: `(user_id, memory, created_at)` |
+| Persistence | Permanent — survives restarts, no cloud dependency |
+
+**Why not Mem0?** Mem0's internal fact-extraction prompt is ~9,500 tokens. Every Groq free-tier model has a ≤12,000 TPM limit, so a single extraction call consumes the entire per-minute budget — making memory unreliable on free tier. The custom engine uses ~150 tokens per call, which works reliably at any tier.
 
 ---
 
@@ -845,7 +825,7 @@ python -m tests.test_agent
 | Done | 5-model cascade with mid-loop switching |
 | Done | Live model indicator (sidebar + per-reply badge) |
 | Done | Smart database routing (PubMed vs arXiv) |
-| Done | Per-user memory isolation with disk persistence |
+| Done | SQLite persistent memory — per-user fact storage with ~150-token extraction |
 | Done | FastMCP server for external integrations |
 | Done | Slash command routing with forced tool binding |
 | Planned | Semantic Scholar tool for broader academic coverage |
