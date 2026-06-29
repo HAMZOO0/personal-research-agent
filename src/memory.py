@@ -9,6 +9,18 @@ MEMORY_INIT_ERROR = None
 try:
     MEMORY = Memory.from_config(MEM0_CONFIG)
     print("SUCCESS: Memory initialized")
+except RuntimeError as e:
+    import traceback
+    MEMORY = None
+    if "already accessed by another instance" in str(e):
+        MEMORY_INIT_ERROR = (
+            "Qdrant storage is locked by another Streamlit process.\n"
+            "Stop ALL Streamlit instances (Ctrl+C in every terminal) then restart: "
+            "streamlit run app.py"
+        )
+    else:
+        MEMORY_INIT_ERROR = traceback.format_exc()
+    print(f"Memory init error: {e}")
 except Exception as e:
     import traceback
     MEMORY = None
@@ -70,18 +82,15 @@ def getAllMemory(user_id: str) -> list:
     """Fetch all memories stored for a user ID."""
     if MEMORY is None:
         return []
-    # Try newer API (filters dict) first, fall back to legacy (user_id kwarg)
     try:
-        result = MEMORY.get_all(filters={"user_id": user_id})
-        # If result looks empty, retry with legacy API
-        items = result.get("results", result) if isinstance(result, dict) else result
-        if not items:
-            raise ValueError("empty — trying legacy API")
-        return result
-    except Exception:
-        pass
-    try:
-        return MEMORY.get_all(user_id=user_id)
+        return MEMORY.get_all(filters={"user_id": user_id})
+    except TypeError:
+        # Older mem0 API uses positional user_id kwarg
+        try:
+            return MEMORY.get_all(user_id=user_id)
+        except Exception as exc:
+            print(f"Error getting all memories (legacy API): {exc}")
+            return []
     except Exception as exc:
         print(f"Error getting all memories: {exc}")
         return []

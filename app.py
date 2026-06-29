@@ -2,7 +2,7 @@ import streamlit as st
 import json
 from src import chat, getAllMemory, MEMORY, MEMORY_INIT_ERROR
 
-st.set_page_config(page_title="Research Assistant", layout="wide")
+st.set_page_config(page_title="ScholarMind", page_icon="🔬", layout="wide")
 
 # Injecting Claude Code-style dark grey theme
 st.markdown("""
@@ -300,7 +300,7 @@ if "last_model" not in st.session_state:
 
 # --- Sidebar ---
 with st.sidebar:
-    st.title("Research Assistant")
+    st.title("ScholarMind")
     st.caption("Powered by Groq + Mem0 + LangChain + MCP Server")
     st.divider()
 
@@ -369,7 +369,7 @@ with st.sidebar:
         st.rerun()
 
 # --- Main Chat Area (GPT-style Single Column) ---
-st.title("Research Assistant")
+st.title("ScholarMind")
 st.caption("Ask questions, explore papers, search code, and find videos in one unified chat.")
 
 # Message container

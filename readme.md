@@ -1,6 +1,6 @@
 <div align="center">
 
-# Personal Research Assistant
+# ScholarMind
 
 **An autonomous AI research agent with persistent semantic memory, multi-source tool orchestration, and a real-time Streamlit UI**
 
@@ -12,7 +12,7 @@
 [![FastMCP](https://img.shields.io/badge/Tools-FastMCP-00C7B7?style=flat-square)](https://github.com/jlowin/fastmcp)
 [![Qdrant](https://img.shields.io/badge/VectorDB-Qdrant-DC244C?style=flat-square&logo=qdrant&logoColor=white)](https://qdrant.tech)
 
-*Ask questions, discover papers, search code, watch videos — all in one session, with memory that persists across conversations.*
+*ScholarMind — ask questions, discover papers, search code, watch videos — all in one session, with memory that persists across conversations.*
 
 </div>
 

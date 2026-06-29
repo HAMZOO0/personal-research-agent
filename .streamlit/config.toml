@@ -1,0 +1,8 @@
+[server]
+# Disable file watcher so Streamlit never hot-reloads automatically.
+# This prevents multiple processes fighting over the Qdrant file lock.
+# To apply code changes: stop Streamlit (Ctrl+C) and rerun `streamlit run app.py`.
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false
