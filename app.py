@@ -1,6 +1,6 @@
 import streamlit as st
 import json
-from src import chat, getAllMemory
+from src import chat, getAllMemory, MEMORY, MEMORY_INIT_ERROR
 
 st.set_page_config(page_title="Research Assistant", layout="wide")
 
@@ -32,11 +32,11 @@ st.markdown("""
     .dashboard-card {
         background: #1a1a1a;
         border: 1px solid rgba(255, 255, 255, 0.07);
-        border-radius: 12px;
-        padding: 1.25rem;
-        margin-bottom: 1.25rem;
+        border-radius: 10px;
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.6rem;
         transition: all 0.2s ease;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
         position: relative;
         overflow: hidden;
     }
@@ -71,9 +71,9 @@ st.markdown("""
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
-        line-height: 1.4;
-        font-size: 1.05rem;
-        margin-bottom: 0.5rem;
+        line-height: 1.35;
+        font-size: 0.92rem;
+        margin-bottom: 0.3rem;
     }
 
     .card-title-link:hover {
@@ -87,20 +87,20 @@ st.markdown("""
     .card-badge-row {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        margin: 0.5rem 0 0.8rem 0;
+        gap: 0.35rem;
+        margin: 0.25rem 0 0.4rem 0;
         flex-wrap: wrap;
     }
 
     .badge {
-        padding: 0.25rem 0.65rem;
+        padding: 0.15rem 0.45rem;
         border-radius: 9999px;
-        font-size: 0.72rem;
+        font-size: 0.68rem;
         font-weight: 600;
         letter-spacing: 0.02em;
         display: inline-flex;
         align-items: center;
-        gap: 0.25rem;
+        gap: 0.2rem;
     }
 
     .badge-stars {
@@ -238,6 +238,54 @@ st.markdown("""
         border-color: rgba(255, 255, 255, 0.2) !important;
         color: #ffffff !important;
     }
+
+    /* Clamp heading sizes inside chat bubbles so ## doesn't render huge */
+    [data-testid="stChatMessage"] h1,
+    [data-testid="stChatMessage"] h2 {
+        font-size: 1.05rem !important;
+        font-weight: 700 !important;
+        color: #e5e5e5 !important;
+        margin-top: 1rem !important;
+        margin-bottom: 0.25rem !important;
+        letter-spacing: 0.01em;
+    }
+    [data-testid="stChatMessage"] h3,
+    [data-testid="stChatMessage"] h4 {
+        font-size: 0.95rem !important;
+        font-weight: 600 !important;
+        color: #d4d4d4 !important;
+        margin-top: 0.75rem !important;
+        margin-bottom: 0.2rem !important;
+    }
+    [data-testid="stChatMessage"] p {
+        font-size: 0.9rem !important;
+        line-height: 1.65 !important;
+        color: #c4c4c4 !important;
+    }
+    [data-testid="stChatMessage"] li {
+        font-size: 0.9rem !important;
+        line-height: 1.6 !important;
+        color: #c4c4c4 !important;
+    }
+    [data-testid="stChatMessage"] a {
+        color: #818cf8 !important;
+        text-decoration: underline !important;
+        text-underline-offset: 2px;
+    }
+    [data-testid="stChatMessage"] a:hover {
+        color: #a5b4fc !important;
+    }
+    [data-testid="stChatMessage"] code {
+        font-size: 0.82rem !important;
+        background: #2a2a2a !important;
+        color: #a3e635 !important;
+        padding: 0.1rem 0.35rem !important;
+        border-radius: 4px !important;
+    }
+    [data-testid="stChatMessage"] hr {
+        border-color: rgba(255,255,255,0.08) !important;
+        margin: 0.75rem 0 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -247,14 +295,61 @@ with st.sidebar:
 # --- Init session state ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "last_model" not in st.session_state:
+    st.session_state.last_model = None
 
 # --- Sidebar ---
 with st.sidebar:
     st.title("Research Assistant")
-    st.caption("Powered by Grok + Mem0 + LangChain + MCP Server")
+    st.caption("Powered by Groq + Mem0 + LangChain + MCP Server")
+    st.divider()
+
+    # Active model indicator
+    st.subheader("Active Model")
+    if st.session_state.last_model:
+        model_name = st.session_state.last_model
+        # Shorten display name
+        label_map = {
+            "openai/gpt-oss-120b":      ("GPT-OSS 120B", "#6366f1"),
+            "qwen/qwen3.6-27b":         ("Qwen 3.6-27B", "#0ea5e9"),
+            "llama-3.3-70b-versatile":  ("LLaMA 3.3-70B", "#10b981"),
+            "qwen/qwen3-32b":           ("Qwen 3-32B",    "#f59e0b"),
+            "openai/gpt-oss-20b":       ("GPT-OSS 20B",   "#ef4444"),
+        }
+        display, color = label_map.get(model_name, (model_name, "#737373"))
+        st.markdown(f"""
+        <div style="background:{color}18;border:1px solid {color}55;border-radius:8px;
+                    padding:0.5rem 0.75rem;display:flex;align-items:center;gap:0.5rem;">
+            <span style="width:8px;height:8px;border-radius:50%;background:{color};
+                         display:inline-block;box-shadow:0 0 6px {color};"></span>
+            <span style="color:{color};font-weight:600;font-size:0.85rem;">{display}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        st.caption(f"`{model_name}`")
+    else:
+        st.caption("No request yet.")
     st.divider()
 
     st.subheader("Memory")
+    # Memory system health indicator
+    if MEMORY is not None:
+        st.markdown("""
+        <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.5rem;">
+            <span style="width:8px;height:8px;border-radius:50%;background:#10b981;
+                         display:inline-block;box-shadow:0 0 5px #10b981;"></span>
+            <span style="color:#10b981;font-size:0.78rem;font-weight:600;">Memory system online</span>
+        </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.5rem;">
+            <span style="width:8px;height:8px;border-radius:50%;background:#ef4444;
+                         display:inline-block;"></span>
+            <span style="color:#ef4444;font-size:0.78rem;font-weight:600;">Memory system offline</span>
+        </div>""", unsafe_allow_html=True)
+        if MEMORY_INIT_ERROR:
+            with st.expander("Show error"):
+                st.code(MEMORY_INIT_ERROR, language="text")
+
     if st.button("View all memories", use_container_width=True):
         memories = getAllMemory(USER_ID)
         items = memories.get("results", []) if isinstance(memories, dict) else memories
@@ -263,7 +358,10 @@ with st.sidebar:
                 if isinstance(item, dict) and item.get("memory"):
                     st.info(item["memory"])
         else:
-            st.caption("No memories yet.")
+            if MEMORY is None:
+                st.error("Memory system failed to initialize. Check the error above.")
+            else:
+                st.caption("No memories stored yet for this user ID.")
 
     st.divider()
     if st.button("Clear chat", use_container_width=True):
@@ -275,43 +373,60 @@ st.title("Research Assistant")
 st.caption("Ask questions, explore papers, search code, and find videos in one unified chat.")
 
 # Message container
+_hist_label_map = {
+    "openai/gpt-oss-120b":     ("GPT-OSS 120B", "#6366f1"),
+    "qwen/qwen3.6-27b":        ("Qwen 3.6-27B", "#0ea5e9"),
+    "llama-3.3-70b-versatile": ("LLaMA 3.3-70B", "#10b981"),
+    "qwen/qwen3-32b":          ("Qwen 3-32B",    "#f59e0b"),
+    "openai/gpt-oss-20b":      ("GPT-OSS 20B",   "#ef4444"),
+}
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
+        if msg["role"] == "assistant" and msg.get("model_used"):
+            m = msg["model_used"]
+            disp, col = _hist_label_map.get(m, (m, "#737373"))
+            st.markdown(f"""
+            <div style="margin-top:0.4rem;display:flex;align-items:center;gap:0.4rem;">
+                <span style="width:7px;height:7px;border-radius:50%;background:{col};
+                             display:inline-block;"></span>
+                <span style="color:{col};font-size:0.75rem;font-weight:600;opacity:0.8;">{disp}</span>
+            </div>""", unsafe_allow_html=True)
         
         # Render YouTube results inline for the assistant
         if msg.get("youtube_results"):
             st.markdown('<div class="panel-header" style="font-size: 1.1rem; margin-top: 1rem; margin-bottom: 0.5rem;">YouTube Insights</div>', unsafe_allow_html=True)
             for yt in msg["youtube_results"]:
                 vid = yt.get('video_id', '')
-                thumb = f"https://img.youtube.com/vi/{vid}/hqdefault.jpg" if vid else ""
+                thumb = f"https://img.youtube.com/vi/{vid}/mqdefault.jpg" if vid else ""
                 st.markdown(f"""
-                <div class="dashboard-card youtube-card">
-                    <a href="{yt.get('url')}" target="_blank">
-                        <img src="{thumb}" style="width:100%;border-radius:8px;margin-bottom:0.6rem;" onerror="this.style.display='none'"/>
+                <div class="dashboard-card youtube-card" style="display:flex;gap:0.75rem;align-items:flex-start;">
+                    <a href="{yt.get('url')}" target="_blank" style="flex-shrink:0;">
+                        <img src="{thumb}" style="width:110px;height:62px;object-fit:cover;border-radius:6px;" onerror="this.style.display='none'"/>
                     </a>
-                    <a href="{yt.get('url')}" target="_blank" class="card-title-link">{yt.get('title', 'Video')}</a>
-                    <div class="card-badge-row">
-                        <span class="badge badge-yt">YouTube</span>
-                        <span class="badge badge-topic">ID: {vid}</span>
+                    <div style="flex:1;min-width:0;">
+                        <a href="{yt.get('url')}" target="_blank" class="card-title-link">{yt.get('title', 'Video')}</a>
+                        <div class="card-badge-row">
+                            <span class="badge badge-yt">YouTube</span>
+                        </div>
+                        <a href="{yt.get('url')}" target="_blank" class="action-btn-link">Watch ➜</a>
                     </div>
-                    <a href="{yt.get('url')}" target="_blank" class="action-btn-link">Watch on YouTube ➜</a>
                 </div>
                 """, unsafe_allow_html=True)
-                
+
         # Render GitHub results inline for the assistant
         if msg.get("github_results"):
-            st.markdown('<div class="panel-header" style="font-size: 1.1rem; margin-top: 1rem; margin-bottom: 0.5rem;">GitHub Code Repositories</div>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-header" style="font-size:0.95rem;margin-top:0.75rem;margin-bottom:0.35rem;">GitHub Repositories</div>', unsafe_allow_html=True)
             for repo in msg["github_results"]:
                 st.markdown(f"""
                 <div class="dashboard-card">
-                    <a href="{repo.get('url')}" target="_blank" class="card-title-link">Repository: {repo.get('name')}</a>
+                    <a href="{repo.get('url')}" target="_blank" class="card-title-link">{repo.get('name')}</a>
                     <div class="card-badge-row">
-                        <span class="badge badge-stars">Stars: {repo.get('stars', 0):,}</span>
-                        <span class="badge badge-topic">GitHub Repo</span>
+                        <span class="badge badge-stars">★ {repo.get('stars', 0):,}</span>
+                        <span class="badge badge-topic">GitHub</span>
                     </div>
                     <div class="card-desc-text">{repo.get('desc')}</div>
-                    <a href="{repo.get('url')}" target="_blank" class="action-btn-link">Explore Code ➜</a>
+                    <a href="{repo.get('url')}" target="_blank" class="action-btn-link">View Repo ➜</a>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -324,6 +439,7 @@ with col_pop:
             "Web Search": "web_search",
             "arXiv Paper Search": "arxiv_search",
             "arXiv Paper Reader": "fetch_arxiv_paper",
+            "PubMed Medical Search": "pubmed_search",
             "GitHub Repo Search": "github_search",
             "YouTube Video Search": "youtube_search",
         }
@@ -341,6 +457,7 @@ with col_pop:
         - `/search <query>` — Web Search
         - `/papers <topic>` — arXiv Paper Search
         - `/paper <id>` — Read arXiv Paper by ID
+        - `/pubmed <topic>` — PubMed Medical Search
         - `/git <query>` — GitHub Search
         - `/yt <query>` — YouTube Search
         - `/sub <video_id>` — YouTube Transcript
@@ -358,42 +475,65 @@ if prompt := st.chat_input("Ask anything or use command (e.g. /yt, /git)..."):
             res = chat(user_id=USER_ID, user_message=prompt, enabled_tools=enabled_tools)
         
         reply = res.get("reply", "No response generated.")
+        model_used = res.get("model_used", "")
         st.markdown(reply)
-        
+
+        # Model badge under the reply
+        if model_used:
+            st.session_state.last_model = model_used
+            label_map = {
+                "openai/gpt-oss-120b":     ("GPT-OSS 120B", "#6366f1"),
+                "qwen/qwen3.6-27b":        ("Qwen 3.6-27B", "#0ea5e9"),
+                "llama-3.3-70b-versatile": ("LLaMA 3.3-70B", "#10b981"),
+                "qwen/qwen3-32b":          ("Qwen 3-32B",    "#f59e0b"),
+                "openai/gpt-oss-20b":      ("GPT-OSS 20B",   "#ef4444"),
+            }
+            display, color = label_map.get(model_used, (model_used, "#737373"))
+            st.markdown(f"""
+            <div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.4rem;">
+                <span style="width:7px;height:7px;border-radius:50%;background:{color};
+                             display:inline-block;box-shadow:0 0 5px {color};"></span>
+                <span style="color:{color};font-size:0.75rem;font-weight:600;opacity:0.85;">
+                    {display}
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
+
         yt_data = res.get("youtube_results", [])
         gh_data = res.get("github_results", [])
         
         if yt_data:
-            st.markdown('<div class="panel-header" style="font-size: 1.1rem; margin-top: 1rem; margin-bottom: 0.5rem;">YouTube Insights</div>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-header" style="font-size:0.95rem;margin-top:0.75rem;margin-bottom:0.35rem;">YouTube Insights</div>', unsafe_allow_html=True)
             for yt in yt_data:
                 vid = yt.get('video_id', '')
-                thumb = f"https://img.youtube.com/vi/{vid}/hqdefault.jpg" if vid else ""
+                thumb = f"https://img.youtube.com/vi/{vid}/mqdefault.jpg" if vid else ""
                 st.markdown(f"""
-                <div class="dashboard-card youtube-card">
-                    <a href="{yt.get('url')}" target="_blank">
-                        <img src="{thumb}" style="width:100%;border-radius:8px;margin-bottom:0.6rem;" onerror="this.style.display='none'"/>
+                <div class="dashboard-card youtube-card" style="display:flex;gap:0.75rem;align-items:flex-start;">
+                    <a href="{yt.get('url')}" target="_blank" style="flex-shrink:0;">
+                        <img src="{thumb}" style="width:110px;height:62px;object-fit:cover;border-radius:6px;" onerror="this.style.display='none'"/>
                     </a>
-                    <a href="{yt.get('url')}" target="_blank" class="card-title-link">{yt.get('title', 'Video')}</a>
-                    <div class="card-badge-row">
-                        <span class="badge badge-yt">YouTube</span>
-                        <span class="badge badge-topic">ID: {vid}</span>
+                    <div style="flex:1;min-width:0;">
+                        <a href="{yt.get('url')}" target="_blank" class="card-title-link">{yt.get('title', 'Video')}</a>
+                        <div class="card-badge-row">
+                            <span class="badge badge-yt">YouTube</span>
+                        </div>
+                        <a href="{yt.get('url')}" target="_blank" class="action-btn-link">Watch ➜</a>
                     </div>
-                    <a href="{yt.get('url')}" target="_blank" class="action-btn-link">Watch on YouTube ➜</a>
                 </div>
                 """, unsafe_allow_html=True)
-                
+
         if gh_data:
-            st.markdown('<div class="panel-header" style="font-size: 1.1rem; margin-top: 1rem; margin-bottom: 0.5rem;">GitHub Code Repositories</div>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-header" style="font-size:0.95rem;margin-top:0.75rem;margin-bottom:0.35rem;">GitHub Repositories</div>', unsafe_allow_html=True)
             for repo in gh_data:
                 st.markdown(f"""
                 <div class="dashboard-card">
-                    <a href="{repo.get('url')}" target="_blank" class="card-title-link">Repository: {repo.get('name')}</a>
+                    <a href="{repo.get('url')}" target="_blank" class="card-title-link">{repo.get('name')}</a>
                     <div class="card-badge-row">
-                        <span class="badge badge-stars">Stars: {repo.get('stars', 0):,}</span>
-                        <span class="badge badge-topic">GitHub Repo</span>
+                        <span class="badge badge-stars">★ {repo.get('stars', 0):,}</span>
+                        <span class="badge badge-topic">GitHub</span>
                     </div>
                     <div class="card-desc-text">{repo.get('desc')}</div>
-                    <a href="{repo.get('url')}" target="_blank" class="action-btn-link">Explore Code ➜</a>
+                    <a href="{repo.get('url')}" target="_blank" class="action-btn-link">View Repo ➜</a>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -401,6 +541,7 @@ if prompt := st.chat_input("Ask anything or use command (e.g. /yt, /git)..."):
         "role": "assistant",
         "content": reply,
         "youtube_results": yt_data,
-        "github_results": gh_data
+        "github_results": gh_data,
+        "model_used": model_used,
     })
     st.rerun()

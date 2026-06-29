@@ -4,6 +4,7 @@ from src.tools.search import web_search_tool
 from src.tools.arxiv import arxiv_search_tool, fetch_arxiv_paper_tool
 from src.tools.youtube import youtube_search_tool, youtube_transcript_tool
 from src.tools.github import github_search_tool
+from src.tools.pubmed import pubmed_search_tool
 
 mcp = FastMCP("ResearchAssistantTools")
 
@@ -48,6 +49,14 @@ def github_search(query: str) -> str:
     Returns a JSON string of repositories with their name, stars, URL, and description.
     """
     return github_search_tool(query)
+
+@mcp.tool(name="pubmed_search")
+def pubmed_search(query: str) -> str:
+    """Search PubMed for peer-reviewed medical and biomedical research papers.
+    Use for health, medicine, clinical, pharmacology, biology, and nutrition topics.
+    Returns PMID, title, authors, journal, date, abstract, and URL.
+    """
+    return pubmed_search_tool(query)
 
 if __name__ == "__main__":
     mcp.run()

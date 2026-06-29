@@ -221,3 +221,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Qdrant persistent vector store (memory data)
+qdrant_store/

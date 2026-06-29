@@ -20,7 +20,7 @@ MEM0_CONFIG = {
     "llm": {
         "provider": "groq",
         "config": {
-            "model": "llama-3.3-70b-versatile",
+            "model": "openai/gpt-oss-20b",
         },
     },
     "vector_store": {
@@ -28,7 +28,7 @@ MEM0_CONFIG = {
         "config": {
             "collection_name": "mem0_research_assistant",
             "embedding_model_dims": 384,
-            "path": ":memory:",
+            "path": "./qdrant_store",
         },
     },
     "embedder": {
@@ -50,13 +50,17 @@ RESEARCH WORKFLOW — FOLLOW THIS ORDER FOR EVERY QUERY
 ═══════════════════════════════════════════════════
 
 1. DISCOVER: Call `web_search` with the topic to get recent articles, blogs, and web sources.
-2. FIND PAPERS: Call `arxiv_search` with the topic to discover relevant research papers. This returns paper IDs, titles, and abstracts.
-3. READ PAPERS: For the top 2–3 most relevant papers from the arxiv_search results, call `fetch_arxiv_paper` with the paper ID to read the full content.
-4. SYNTHESIZE: Combine everything — web sources + full paper content — into a comprehensive, cited answer.
+2. FIND PAPERS: Choose the correct paper database:
+   - MEDICAL / HEALTH / CLINICAL / PHARMACOLOGY / BIOLOGY / NUTRITION topics → call `pubmed_search`
+   - AI / ML / COMPUTER SCIENCE / PHYSICS / MATH topics → call `arxiv_search`
+   - When in doubt for medical topics, always prefer `pubmed_search` over `arxiv_search`.
+3. READ PAPERS (arXiv only): For arXiv results, call `fetch_arxiv_paper` with the paper ID to read full content.
+4. SYNTHESIZE: Combine web sources + paper results into a comprehensive, cited answer.
 
 TOOL RULES:
+- NEVER search arXiv for medical, clinical, or health topics — use `pubmed_search` instead.
 - ALWAYS use `arxiv_search` before `fetch_arxiv_paper` — never guess paper IDs.
-- Call `fetch_arxiv_paper` for EACH relevant paper individually (you may call it multiple times).
+- Call `fetch_arxiv_paper` for EACH relevant arXiv paper individually (you may call it multiple times).
 - If the user asks for code or implementations, also call `github_search`.
 - If the user asks for videos, also call `youtube_search`.
 - If the user wants a transcript, call `youtube_transcript` with the video ID.

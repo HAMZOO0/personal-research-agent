@@ -13,6 +13,7 @@ from src.tools.search import web_search_tool
 from src.tools.arxiv import arxiv_search_tool, fetch_arxiv_paper_tool
 from src.tools.youtube import youtube_search_tool, youtube_transcript_tool
 from src.tools.github import github_search_tool
+from src.tools.pubmed import pubmed_search_tool
 
 # Build the model pool at startup — skip any that fail to initialize.
 _model_pool: list = []
@@ -67,8 +68,17 @@ def github_search(query: str) -> str:
     """
     return github_search_tool(query)
 
+@tool
+def pubmed_search(query: str) -> str:
+    """Search PubMed for peer-reviewed medical and biomedical research papers.
+    Use this for health, medicine, clinical, pharmacology, biology, and nutrition topics.
+    Returns PMID, title, authors, journal, publication date, abstract, and URL.
+    Do NOT use arXiv for medical topics — use this tool instead.
+    """
+    return pubmed_search_tool(query)
 
-ALL_TOOLS = [web_search, arxiv_search, fetch_arxiv_paper, youtube_search, youtube_transcript, github_search]
+
+ALL_TOOLS = [web_search, arxiv_search, fetch_arxiv_paper, youtube_search, youtube_transcript, github_search, pubmed_search]
 _ALL_TOOL_MAP = {t.name: t for t in ALL_TOOLS}
 
 
@@ -170,6 +180,10 @@ def chat(user_id: str, user_message: str, enabled_tools: list = None) -> dict:
                 command_instruction = f"Get the transcript for YouTube video ID: {args}. "
                 clean_message = args
                 forced_tool = "youtube_transcript"
+            elif cmd in ["/pubmed", "/med", "/medical"]:
+                command_instruction = f"Search PubMed for medical research papers about: {args}. "
+                clean_message = args
+                forced_tool = "pubmed_search"
 
         user_message_to_send = command_instruction + clean_message if command_instruction else user_message
 
@@ -305,6 +319,7 @@ def chat(user_id: str, user_message: str, enabled_tools: list = None) -> dict:
             "reply": reply,
             "github_results": github_data or [],
             "youtube_results": youtube_data or [],
+            "model_used": MODEL_CASCADE[_state["idx"]].replace("groq:", ""),
         }
 
     except Exception as exc:
@@ -321,4 +336,5 @@ def chat(user_id: str, user_message: str, enabled_tools: list = None) -> dict:
             "reply": reply,
             "github_results": [],
             "youtube_results": [],
+            "model_used": MODEL_CASCADE[_state["idx"]].replace("groq:", "") if _model_pool else "none",
         }
