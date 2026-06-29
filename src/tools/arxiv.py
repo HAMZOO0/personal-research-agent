@@ -1,7 +1,60 @@
 import io
 import re
+import xml.etree.ElementTree as ET
 import requests
 import fitz  # PyMuPDF
+
+
+def arxiv_search_tool(query: str, max_results: int = 5) -> str:
+    """Search arXiv for papers matching a topic and return IDs, titles, authors, and abstracts."""
+    try:
+        params = {
+            "search_query": f"all:{query}",
+            "start": 0,
+            "max_results": max_results,
+            "sortBy": "relevance",
+            "sortOrder": "descending",
+        }
+        r = requests.get(
+            "https://export.arxiv.org/api/query",
+            params=params,
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=15,
+        )
+        r.raise_for_status()
+
+        ns = {"atom": "http://www.w3.org/2005/Atom"}
+        root = ET.fromstring(r.text)
+        entries = root.findall("atom:entry", ns)
+
+        if not entries:
+            return f"No arXiv papers found for query: {query}"
+
+        results = []
+        for entry in entries:
+            raw_id = entry.find("atom:id", ns).text.strip()
+            arxiv_id = raw_id.split("/abs/")[-1].replace("v1", "").replace("v2", "").strip("/")
+            title = entry.find("atom:title", ns).text.strip().replace("\n", " ")
+            abstract = entry.find("atom:summary", ns).text.strip().replace("\n", " ")
+            published = entry.find("atom:published", ns).text[:10]
+            authors = [a.find("atom:name", ns).text for a in entry.findall("atom:author", ns)]
+            author_str = ", ".join(authors[:4]) + (" et al." if len(authors) > 4 else "")
+
+            results.append(
+                f"ID: {arxiv_id}\n"
+                f"Title: {title}\n"
+                f"Authors: {author_str}\n"
+                f"Published: {published}\n"
+                f"Abstract: {abstract[:500]}{'...' if len(abstract) > 500 else ''}\n"
+                f"URL: https://arxiv.org/abs/{arxiv_id}\n"
+                f"PDF: https://arxiv.org/pdf/{arxiv_id}"
+            )
+
+        return "\n\n" + ("-" * 60 + "\n\n").join(results)
+
+    except Exception as e:
+        return f"Error searching arXiv: {str(e)}"
+
 
 def fetch_arxiv_paper_tool(arxiv_id_or_url: str) -> str:
     """Download and extract the text content of an arXiv research paper.

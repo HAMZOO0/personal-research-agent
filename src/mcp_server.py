@@ -1,7 +1,7 @@
 import os
 from mcp.server.fastmcp import FastMCP
 from src.tools.search import web_search_tool
-from src.tools.arxiv import fetch_arxiv_paper_tool
+from src.tools.arxiv import arxiv_search_tool, fetch_arxiv_paper_tool
 from src.tools.youtube import youtube_search_tool, youtube_transcript_tool
 from src.tools.github import github_search_tool
 
@@ -11,6 +11,13 @@ mcp = FastMCP("ResearchAssistantTools")
 def web_search(query: str) -> str:
     """Search the web for the latest information on a topic."""
     return web_search_tool(query)
+
+@mcp.tool(name="arxiv_search")
+def arxiv_search(query: str) -> str:
+    """Search arXiv for research papers on a topic.
+    Returns paper IDs, titles, authors, publication dates, abstracts, and URLs.
+    """
+    return arxiv_search_tool(query)
 
 @mcp.tool(name="fetch_arxiv_paper")
 def fetch_arxiv_paper(arxiv_id_or_url: str) -> str:

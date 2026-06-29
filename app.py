@@ -4,46 +4,43 @@ from src import chat, getAllMemory
 
 st.set_page_config(page_title="Research Assistant", layout="wide")
 
-# Injecting premium custom CSS styles
+# Injecting Claude Code-style dark grey theme
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
     .stApp {
-        background: radial-gradient(circle at 10% 20%, #080711 0%, #0f1026 90%);
+        background: #111111;
         font-family: 'Plus Jakarta Sans', sans-serif;
     }
-    
+
     [data-testid="stSidebar"] {
-        background-color: rgba(8, 7, 17, 0.85) !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(20px);
+        background-color: #161616 !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.07);
     }
-    
+
     .panel-header {
         font-family: 'Space Grotesk', sans-serif;
         font-size: 1.6rem;
         font-weight: 700;
-        background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f472b6 100%);
+        background: linear-gradient(135deg, #d4d4d4 0%, #a3a3a3 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         margin-bottom: 1.5rem;
-        text-shadow: 0 0 40px rgba(129, 140, 248, 0.15);
     }
-    
+
     .dashboard-card {
-        background: linear-gradient(145deg, rgba(25, 28, 50, 0.65) 0%, rgba(15, 17, 32, 0.75) 100%);
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 16px;
+        background: #1a1a1a;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 12px;
         padding: 1.25rem;
         margin-bottom: 1.25rem;
-        backdrop-filter: blur(12px);
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.6);
+        transition: all 0.2s ease;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
         position: relative;
         overflow: hidden;
     }
-    
+
     .dashboard-card::before {
         content: '';
         position: absolute;
@@ -51,24 +48,24 @@ st.markdown("""
         left: 0;
         right: 0;
         height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
     }
-    
+
     .dashboard-card:hover {
-        transform: translateY(-3px);
-        border-color: rgba(129, 140, 248, 0.35);
-        box-shadow: 0 15px 35px -5px rgba(129, 140, 248, 0.2), 0 0 15px 0 rgba(129, 140, 248, 0.05);
+        transform: translateY(-2px);
+        border-color: rgba(255, 255, 255, 0.15);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     }
-    
+
     .youtube-card:hover {
-        border-color: rgba(239, 68, 68, 0.4);
-        box-shadow: 0 15px 35px -5px rgba(239, 68, 68, 0.2), 0 0 15px 0 rgba(239, 68, 68, 0.05);
+        border-color: rgba(239, 68, 68, 0.35);
+        box-shadow: 0 8px 24px rgba(239, 68, 68, 0.1);
     }
-    
+
     .card-title-link {
         text-decoration: none !important;
         font-weight: 600;
-        color: #f8fafc;
+        color: #e5e5e5;
         transition: color 0.2s ease;
         display: -webkit-box;
         -webkit-line-clamp: 2;
@@ -78,15 +75,15 @@ st.markdown("""
         font-size: 1.05rem;
         margin-bottom: 0.5rem;
     }
-    
+
     .card-title-link:hover {
-        color: #818cf8 !important;
+        color: #ffffff !important;
     }
-    
+
     .youtube-card .card-title-link:hover {
-        color: #f87171 !important;
+        color: #fca5a5 !important;
     }
-    
+
     .card-badge-row {
         display: flex;
         align-items: center;
@@ -94,7 +91,7 @@ st.markdown("""
         margin: 0.5rem 0 0.8rem 0;
         flex-wrap: wrap;
     }
-    
+
     .badge {
         padding: 0.25rem 0.65rem;
         border-radius: 9999px;
@@ -105,122 +102,125 @@ st.markdown("""
         align-items: center;
         gap: 0.25rem;
     }
-    
+
     .badge-stars {
-        background-color: rgba(234, 179, 8, 0.1);
-        color: #facc15;
-        border: 1px solid rgba(234, 179, 8, 0.2);
+        background-color: rgba(255, 255, 255, 0.06);
+        color: #d4d4d4;
+        border: 1px solid rgba(255, 255, 255, 0.1);
     }
-    
+
     .badge-yt {
-        background-color: rgba(239, 68, 68, 0.1);
+        background-color: rgba(239, 68, 68, 0.08);
         color: #f87171;
         border: 1px solid rgba(239, 68, 68, 0.2);
     }
-    
+
     .badge-topic {
-        background-color: rgba(129, 140, 248, 0.1);
-        color: #93c5fd;
-        border: 1px solid rgba(129, 140, 248, 0.2);
+        background-color: rgba(255, 255, 255, 0.05);
+        color: #a3a3a3;
+        border: 1px solid rgba(255, 255, 255, 0.08);
     }
-    
+
     .card-desc-text {
         font-size: 0.875rem;
-        color: #94a3b8;
+        color: #737373;
         line-height: 1.5;
         margin-bottom: 0.8rem;
     }
-    
+
     .action-btn-link {
         display: inline-flex;
         align-items: center;
         gap: 0.35rem;
         font-size: 0.82rem;
         font-weight: 600;
-        color: #818cf8;
+        color: #d4d4d4;
         text-decoration: none !important;
         transition: all 0.2s ease;
-        border: 1px solid rgba(129, 140, 248, 0.25);
+        border: 1px solid rgba(255, 255, 255, 0.12);
         padding: 0.3rem 0.65rem;
         border-radius: 8px;
-        background-color: rgba(129, 140, 248, 0.05);
+        background-color: rgba(255, 255, 255, 0.04);
     }
-    
+
     .action-btn-link:hover {
         color: #ffffff !important;
-        background-color: #4f46e5;
-        border-color: #4f46e5;
-        transform: translateX(3px);
+        background-color: #2d2d2d;
+        border-color: rgba(255, 255, 255, 0.22);
+        transform: translateX(2px);
     }
-    
+
     .youtube-card .action-btn-link {
         color: #f87171;
-        border-color: rgba(239, 68, 68, 0.25);
-        background-color: rgba(239, 68, 68, 0.05);
+        border-color: rgba(239, 68, 68, 0.2);
+        background-color: rgba(239, 68, 68, 0.04);
     }
-    
+
     .youtube-card .action-btn-link:hover {
         color: #ffffff !important;
-        background-color: #dc2626;
-        border-color: #dc2626;
+        background-color: #b91c1c;
+        border-color: #b91c1c;
     }
-    
+
     /* Custom tabs styling */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: rgba(15, 23, 42, 0.4);
-        padding: 6px;
-        border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.04);
+        gap: 6px;
+        background-color: #1a1a1a;
+        padding: 5px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
     }
-    
+
     .stTabs [data-baseweb="tab"] {
-        height: 40px;
-        border-radius: 8px;
+        height: 38px;
+        border-radius: 7px;
         font-weight: 600;
         font-size: 0.88rem;
-        color: #94a3b8;
+        color: #737373;
         background-color: transparent;
         transition: all 0.2s ease;
         border: none !important;
     }
-    
+
     .stTabs [data-baseweb="tab"]:hover {
-        color: #ffffff;
+        color: #e5e5e5;
         background-color: rgba(255, 255, 255, 0.05);
     }
-    
+
     .stTabs [aria-selected="true"] {
-        background-color: rgba(129, 140, 248, 0.15) !important;
+        background-color: #2a2a2a !important;
         color: #ffffff !important;
-        border: 1px solid rgba(129, 140, 248, 0.25) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
     }
-    
+
     /* Streamlit container video override */
     .element-container iframe {
-        border-radius: 12px !important;
+        border-radius: 10px !important;
     }
 
     /* Buttons styling */
     div.stButton > button:first-child {
-        background: linear-gradient(135deg, #4f46e5, #7c3aed);
-        color: white;
+        background: #242424;
+        color: #e5e5e5;
         border-radius: 8px;
-        border: none;
+        border: 1px solid rgba(255, 255, 255, 0.1);
         padding: 0.5rem 1rem;
         font-weight: 600;
-        transition: all 0.3s ease;
+        transition: all 0.2s ease;
     }
     div.stButton > button:first-child:hover {
-        box-shadow: 0 4px 15px rgba(124, 58, 237, 0.4);
+        background: #2e2e2e;
+        border-color: rgba(255, 255, 255, 0.2);
+        color: #ffffff;
         transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     }
-    
+
     /* Plus button styling */
     div[data-testid="stPopover"] button {
-        background-color: rgba(255, 255, 255, 0.05) !important;
+        background-color: #1e1e1e !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        color: #94a3b8 !important;
+        color: #a3a3a3 !important;
         border-radius: 50% !important;
         width: 38px !important;
         height: 38px !important;
@@ -234,8 +234,8 @@ st.markdown("""
         margin-top: 5px !important;
     }
     div[data-testid="stPopover"] button:hover {
-        background-color: rgba(129, 140, 248, 0.15) !important;
-        border-color: rgba(129, 140, 248, 0.3) !important;
+        background-color: #2a2a2a !important;
+        border-color: rgba(255, 255, 255, 0.2) !important;
         color: #ffffff !important;
     }
 </style>
@@ -283,17 +283,21 @@ for msg in st.session_state.messages:
         if msg.get("youtube_results"):
             st.markdown('<div class="panel-header" style="font-size: 1.1rem; margin-top: 1rem; margin-bottom: 0.5rem;">YouTube Insights</div>', unsafe_allow_html=True)
             for yt in msg["youtube_results"]:
+                vid = yt.get('video_id', '')
+                thumb = f"https://img.youtube.com/vi/{vid}/hqdefault.jpg" if vid else ""
                 st.markdown(f"""
                 <div class="dashboard-card youtube-card">
-                    <a href="{yt.get('url')}" target="_blank" class="card-title-link">Video: {yt.get('title', 'Video')}</a>
+                    <a href="{yt.get('url')}" target="_blank">
+                        <img src="{thumb}" style="width:100%;border-radius:8px;margin-bottom:0.6rem;" onerror="this.style.display='none'"/>
+                    </a>
+                    <a href="{yt.get('url')}" target="_blank" class="card-title-link">{yt.get('title', 'Video')}</a>
                     <div class="card-badge-row">
                         <span class="badge badge-yt">YouTube</span>
-                        <span class="badge badge-topic">ID: {yt.get('video_id')}</span>
+                        <span class="badge badge-topic">ID: {vid}</span>
                     </div>
-                    <a href="{yt.get('url')}" target="_blank" class="action-btn-link">View Video ➜</a>
+                    <a href="{yt.get('url')}" target="_blank" class="action-btn-link">Watch on YouTube ➜</a>
                 </div>
                 """, unsafe_allow_html=True)
-                st.video(yt.get('url'))
                 
         # Render GitHub results inline for the assistant
         if msg.get("github_results"):
@@ -318,9 +322,10 @@ with col_pop:
         st.markdown("Toggle active skills for this query:")
         tool_options = {
             "Web Search": "web_search",
+            "arXiv Paper Search": "arxiv_search",
+            "arXiv Paper Reader": "fetch_arxiv_paper",
             "GitHub Repo Search": "github_search",
             "YouTube Video Search": "youtube_search",
-            "arXiv Paper Fetcher": "fetch_arxiv_paper"
         }
         enabled_tools = []
         for label, tool_id in tool_options.items():
@@ -332,12 +337,13 @@ with col_pop:
         
         st.divider()
         st.markdown("""
-        **Keyboard Commands:**
-        - `/search <query>` - Web Search
-        - `/git <query>` - GitHub Search
-        - `/yt <query>` - YouTube Search
-        - `/paper <id>` - arXiv Paper
-        - `/sub <video_id>` - YouTube Transcript
+        **Slash Commands:**
+        - `/search <query>` — Web Search
+        - `/papers <topic>` — arXiv Paper Search
+        - `/paper <id>` — Read arXiv Paper by ID
+        - `/git <query>` — GitHub Search
+        - `/yt <query>` — YouTube Search
+        - `/sub <video_id>` — YouTube Transcript
         """)
 
 # --- Chat Input ---
@@ -360,17 +366,21 @@ if prompt := st.chat_input("Ask anything or use command (e.g. /yt, /git)..."):
         if yt_data:
             st.markdown('<div class="panel-header" style="font-size: 1.1rem; margin-top: 1rem; margin-bottom: 0.5rem;">YouTube Insights</div>', unsafe_allow_html=True)
             for yt in yt_data:
+                vid = yt.get('video_id', '')
+                thumb = f"https://img.youtube.com/vi/{vid}/hqdefault.jpg" if vid else ""
                 st.markdown(f"""
                 <div class="dashboard-card youtube-card">
-                    <a href="{yt.get('url')}" target="_blank" class="card-title-link">Video: {yt.get('title', 'Video')}</a>
+                    <a href="{yt.get('url')}" target="_blank">
+                        <img src="{thumb}" style="width:100%;border-radius:8px;margin-bottom:0.6rem;" onerror="this.style.display='none'"/>
+                    </a>
+                    <a href="{yt.get('url')}" target="_blank" class="card-title-link">{yt.get('title', 'Video')}</a>
                     <div class="card-badge-row">
                         <span class="badge badge-yt">YouTube</span>
-                        <span class="badge badge-topic">ID: {yt.get('video_id')}</span>
+                        <span class="badge badge-topic">ID: {vid}</span>
                     </div>
-                    <a href="{yt.get('url')}" target="_blank" class="action-btn-link">View Video ➜</a>
+                    <a href="{yt.get('url')}" target="_blank" class="action-btn-link">Watch on YouTube ➜</a>
                 </div>
                 """, unsafe_allow_html=True)
-                st.video(yt.get('url'))
                 
         if gh_data:
             st.markdown('<div class="panel-header" style="font-size: 1.1rem; margin-top: 1rem; margin-bottom: 0.5rem;">GitHub Code Repositories</div>', unsafe_allow_html=True)
